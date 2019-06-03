@@ -3,7 +3,7 @@ Anemones
 
 Anemones is a Redis-backed library for Simple background processing.
 
-Creating background jobs, placing those jobs on multiple queues, and processing them later.
+Create background jobs, place those jobs on multiple queues, and process them later.
 
 ## Quick start
 

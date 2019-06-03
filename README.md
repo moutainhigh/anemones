@@ -96,12 +96,12 @@ class App {
 
 ⑤ The custom converter for serializing and de-serializing `AnemonesData`
 
-⑥ Anemones use listeners to implement extend features. Include the retry feature.
+⑥ Anemones use listeners to implement extend features, including the "retry" feature.
 
-⑦ When `AnemonesManager` shutdown (method `close()` be called), it will wait some seconds to finish jobs in progressing.
-Then the unfinished jobs will be pushed back to queue again.
+⑦ When `AnemonesManager` shutdown (method `close()` be called), it will wait for a few seconds before finishing jobs in progress.
+Then the unfinished jobs will be pushed back to the queue again.
 
-⑧ Init the Redis connections and create thread pool and so on.
+⑧ Initial the Redis connections and create thread pool and so on.
 
 ⑨ The task will be processed soon.
 

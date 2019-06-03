@@ -17,7 +17,7 @@ public class RetryTask implements AnemonesWorker {
     }
 
     @Override
-    public void perform(String param) {
+    public Object perform(String param) {
         throw new IllegalStateException("失败");
     }
 }

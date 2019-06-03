@@ -13,8 +13,9 @@ public interface AnemonesWorker {
      * 执行任务
      *
      * @param param 任务参数
+     * @return 任务结果
      */
-    void perform(String param);
+    Object perform(String param);
 
     /**
      * 执行任务的权重,权重越大则越先执行
@@ -27,7 +28,6 @@ public interface AnemonesWorker {
 
     /**
      * 最大重试次数, 如果为0则不重试
-     * 最大限制为5次
      *
      * @return 最大重试次数
      */

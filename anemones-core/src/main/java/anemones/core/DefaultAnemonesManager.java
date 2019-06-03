@@ -8,12 +8,12 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.DisposableBean;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.util.Assert;
 
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import static anemones.core.Constants.POLL_WAIT_RANDOM_TIME;
@@ -27,16 +27,20 @@ import static java.util.stream.Collectors.toList;
  * @author hason
  */
 @Slf4j
-public class DefaultAnemonesManager implements InitializingBean, DisposableBean, AnemonesManager {
+public class DefaultAnemonesManager implements AnemonesManager {
     private static final Map<String, AnemonesKeyCache> CACHE_MAP = new ConcurrentHashMap<>();
 
+    /**
+     * 任务阻塞拉取的超时时间
+     */
+    private static final int POLL_BLOCK_SECONDS = 3;
     private volatile boolean shutdown = false;
     private final String finalPrefix;
     private final String allPrefix;
     private final String namespace;
     private final Function<String, AnemonesKeyCache> cacheMapping;
     private final AnemonesParamConverter converter;
-    private final List<AnemonesEventListener> listeners = new CopyOnWriteArrayList<>();
+    private final Set<AnemonesEventListener> listeners = new TreeSet<>(Comparator.comparing(AnemonesEventListener::weight).reversed());
     private final List<AnemonesWorker> workers;
     private final int concurrency;
     private final int waitSecondsToTerminate;
@@ -49,7 +53,9 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
     private StatefulRedisConnection<String, String> redis;
 
     public DefaultAnemonesManager(AnemonesConfig config) {
-        Assert.notNull(config.getRedisUrl(), "redisUrl不可为空");
+        if (config.getRedisUrl() == null) {
+            throw new IllegalArgumentException("redisUrl不可为空");
+        }
         this.finalPrefix = config.getFinalPrefix();
         this.allPrefix = config.getAllPrefix();
         this.namespace = config.getNamespace();
@@ -68,23 +74,24 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
 
 
     @Override
-    public void submitTask(String queue, List<String> param) {
-        this.submitIn(queue, param, 0, null);
+    public List<String> submitTask(String queue, List<String> param) {
+        return this.submitIn(queue, param, 0, null);
     }
 
     @Override
-    public void submitTask(String queue, List<String> param, Map<String, String> options) {
-        this.submitIn(queue, param, 0, null, options);
+    public List<String> submitTask(String queue, List<String> param, Map<String, String> options) {
+        return this.submitIn(queue, param, 0, null, options);
     }
 
     @Override
-    public void submitIn(String queue, List<String> param, int time, TimeUnit unit) {
-        this.submitIn(queue, param, time, unit, null);
+    public List<String> submitIn(String queue, List<String> param, int time, TimeUnit unit) {
+        return this.submitIn(queue, param, time, unit, null);
     }
 
     @Override
-    public void submitIn(String queue, List<String> param, int timeUnit, TimeUnit unit, Map<String, String> options) {
+    public List<String> submitIn(String queue, List<String> param, int timeUnit, TimeUnit unit, Map<String, String> options) {
         long currentTimeMillis = System.currentTimeMillis();
+        List<String> jobIds = new ArrayList<>(param);
         List<AnemonesData> list = new ArrayList<>(param.size());
         for (String o : param) {
             AnemonesData datum = new AnemonesData();
@@ -101,8 +108,10 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
             }
             datum.setTargetTimestamp(targetTimestamp);
             list.add(datum);
+            jobIds.add(datum.getJobId());
         }
         submitDirectly(queue, list, false);
+        return jobIds;
     }
 
     @Override
@@ -132,22 +141,21 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
         long now = System.currentTimeMillis();
         try {
             AnemonesKeyCache cache = getAnemonesKeyCache(queue);
-            StatefulRedisConnection<String, String> conn = redisClient.connect();
-            RedisAsyncCommands<String, String> commands = conn.async();
+            RedisAsyncCommands<String, String> commands = redis.async();
             RedisFuture[] futures = new RedisFuture[list.size() + 1];
             int index = 0;
-            for (AnemonesData sidekiqData : list) {
-                if (sidekiqData.getTargetTimestamp() > now) {
-                    futures[index++] = commands.zadd(cache.getZsetKey(), sidekiqData.getTargetTimestamp(), converter.serialize(sidekiqData));
+            for (AnemonesData data : list) {
+                if (data.getTargetTimestamp() > now) {
+                    futures[index++] = commands.zadd(cache.getZsetKey(), data.getTargetTimestamp(), converter.serialize(data));
                 } else if (rescue) {
-                    futures[index++] = commands.rpush(cache.getListKey(), converter.serialize(sidekiqData));
+                    futures[index++] = commands.rpush(cache.getListKey(), converter.serialize(data));
                 } else {
-                    futures[index++] = commands.lpush(cache.getListKey(), converter.serialize(sidekiqData));
+                    futures[index++] = commands.lpush(cache.getListKey(), converter.serialize(data));
                 }
             }
             futures[index++] = commands.zadd(allPrefix, now, queue);
             if (!LettuceFutures.awaitAll(10, TimeUnit.SECONDS, futures)) {
-                throw new TimeoutException();
+                throw new TimeoutException("redis命令超时");
             }
             /// 此处可以做过期处理
             //  conn.expire(allPrefix, EXPIRE_TIME);
@@ -164,6 +172,9 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
         for (AnemonesEventListener listener : listeners) {
             try {
                 listener.notifyEvent(this, event);
+                if (event.isPreventPopup()) {
+                    return;
+                }
             } catch (RuntimeException e) {
                 log.error("[Anemones]严重,{}处理失败,param:{},listener:{}", event.getClass().getSimpleName(),
                         event.getPayload(),
@@ -182,15 +193,18 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
     }
 
     @Override
-    public void afterPropertiesSet() throws Exception {
-        Assert.notNull(this.converter, "Converter不可为空");
+    public void init() {
+        if (this.converter == null) {
+            throw new IllegalArgumentException("Converter不可为空");
+        }
         this.redis = redisClient.connect();
         if (workers == null || workers.isEmpty()) {
-            log.warn("[Anemones]工作者数量为0,将不启动sidekiq工作线程");
+            log.info("[Anemones]{}工作者数量为0,将不启动工作线程", namespace);
             return;
         }
-        workers.sort(Comparator.comparing(AnemonesWorker::weight).reversed());
-        Assert.isTrue(this.concurrency > 0, "并发数不可小于等于0");
+        if (this.concurrency <= 0) {
+            throw new IllegalArgumentException("并发数不可小于等于0");
+        }
         this.executor = new AnemonesThreadPoolExecutor(this.concurrency);
         this.poller = new Poller();
         poller.start();
@@ -200,19 +214,18 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
     }
 
     @Override
-    public void destroy() throws Exception {
+    public void close() throws Exception {
         log.info("[Anemones] 开始关闭Anemones");
         shutdown = true;
         try {
-            if (this.poller != null) {
-                this.poller.shutdown();
+            if (workers == null || workers.isEmpty()) {
+                return;
             }
-            if (this.schedulePoller != null) {
-                this.schedulePoller.shutdown();
-                this.schedulePoller.interrupt();
-            }
-            // 防止获取到任务后还未提交到线程池
-            TimeUnit.SECONDS.sleep(1);
+            this.poller.shutdown();
+            this.schedulePoller.shutdown();
+            // 防止获取到任务后还未提交到线程池 / 以及任务拉取安全结束
+            this.poller.waitForShutdown();
+            this.schedulePoller.waitForShutdown();
             if (this.executor.isShutdown()) {
                 return;
             }
@@ -223,8 +236,8 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
                 Map<String, List<AnemonesData>> map = workers.stream().map(WorkerRunnable::getParam).collect(groupingBy(AnemonesData::getQueue, toList()));
                 for (Map.Entry<String, List<AnemonesData>> entry : map.entrySet()) {
                     try {
-                        log.warn("[Anemones]关闭Anemones, 重新推入 {} 的参数为:{}", entry.getKey(), entry.getValue());
                         submitDirectly(entry.getKey(), entry.getValue(), true);
+                        log.warn("[Anemones]关闭Anemones, 重新推入 {} 的参数为:{}", entry.getKey(), entry.getValue());
                     } catch (RuntimeException e) {
                         log.error("[Anemones]关闭Anemones, 重新推入 {} 异常,任务丢失", entry.getKey(), e);
                     }
@@ -242,13 +255,13 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
             try {
                 redis.close();
             } catch (RuntimeException e) {
-                log.error("[Anemones]Redis链接关闭失败", e);
+                log.error("[Anemones]Redis关闭失败", e);
             }
         }
         try {
             redisClient.shutdown();
         } catch (RuntimeException e) {
-            log.error("[Anemones]Redis客户端关闭失败", e);
+            log.error("[Anemones]Redis Client关闭失败", e);
         }
     }
 
@@ -259,56 +272,88 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
     private class SchedulePoller extends Thread {
 
         private final SetArgs setArgs = SetArgs.Builder.ex(60).nx();
+        private final StatefulRedisConnection<String, String> connection;
         private ThreadLocalRandom random = ThreadLocalRandom.current();
 
         private volatile boolean stop = false;
 
         SchedulePoller() {
             setName("Anemones-Schedule-Poller");
+            this.connection = redisClient.connect();
         }
 
         @Override
         public void run() {
-            RedisCommands<String, String> commands = redis.sync();
-            while (!stop) {
-                try {
-                    TimeUnit.SECONDS.sleep(POLL_WAIT_TIME + random.nextInt(POLL_WAIT_RANDOM_TIME));
-                } catch (InterruptedException e) {
-                    continue;
-                }
-                if (!"OK".equals(commands.set(pollerLockKey, "0", setArgs))) {
-                    continue;
-                }
-                long now = System.currentTimeMillis();
-                for (AnemonesWorker worker : workers) {
-                    AnemonesKeyCache cache = getAnemonesKeyCache(worker.queue());
-                    List<String> params;
-                    while (!stop) {
-                        params = commands.zrangebyscore(cache.getZsetKey(),
-                                Range.create(0, now),
-                                Limit.create(0, 100));
-                        if (params != null && !params.isEmpty()) {
-                            for (String param : params) {
-                                if (commands.zrem(cache.getZsetKey(), param).equals(1L)) {
-                                    commands.rpush(cache.getListKey(), param);
-                                }
-                            }
-                        } else {
-                            break;
-                        }
+            try {
+                RedisCommands<String, String> commands = connection.sync();
+                while (!stop) {
+                    try {
+                        TimeUnit.SECONDS.sleep(POLL_WAIT_TIME + random.nextInt(POLL_WAIT_RANDOM_TIME));
+                    } catch (InterruptedException e) {
+                        continue;
                     }
-                    if (stop) {
+                    try {
+                        doInnerLoop(commands);
+                    } catch (RedisCommandInterruptedException e) {
+                        //
+                    } catch (RuntimeException e) {
+                        log.error("[Anemones] Anemones-Schedule-Poller 异常", e);
+                    }
+                }
+                log.info("[Anemones] Anemones-Schedule-Poller 安全关闭...");
+
+            } finally {
+                try {
+                    this.connection.close();
+                } catch (Exception e) {
+                    //
+                }
+            }
+
+        }
+
+        private void doInnerLoop(RedisCommands<String, String> commands) {
+            if (!"OK".equals(commands.set(pollerLockKey, "0", setArgs))) {
+                return;
+            }
+            long now = System.currentTimeMillis();
+            for (AnemonesWorker worker : workers) {
+                AnemonesKeyCache cache = getAnemonesKeyCache(worker.queue());
+                List<String> params;
+                while (!stop) {
+                    params = commands.zrangebyscore(cache.getZsetKey(),
+                            Range.create(0, now),
+                            Limit.create(0, 100));
+                    if (params != null && !params.isEmpty()) {
+                        for (String param : params) {
+                            if (commands.zrem(cache.getZsetKey(), param).equals(1L)) {
+                                commands.rpush(cache.getListKey(), param);
+                            }
+                        }
+                    } else {
                         break;
                     }
                 }
-                commands.expire(pollerLockKey, 5);
+                if (stop) {
+                    break;
+                }
             }
-            log.info("[Anemones] Anemones-Schedule-Poller 安全关闭...");
-
+            commands.expire(pollerLockKey, 5);
         }
 
         public void shutdown() {
             this.stop = true;
+            this.interrupt();
+        }
+
+        public void waitForShutdown() {
+            while (this.connection.isOpen()) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(100);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
         }
     }
 
@@ -319,65 +364,102 @@ public class DefaultAnemonesManager implements InitializingBean, DisposableBean,
      */
     private class Poller extends Thread {
 
+        private final StatefulRedisConnection<String, String> connection;
         private volatile boolean stop = false;
+        private ThreadLocalRandom random = ThreadLocalRandom.current();
+        private final String[] WATCH_KEYS;
+        private final Map<String, AnemonesWorker> REDIS_KEY_WORKER_MAP;
 
         public Poller() {
             setName("Anemones-Poller");
+            workers.sort(Comparator.comparing(AnemonesWorker::weight).reversed());
+            WATCH_KEYS = new String[workers.size()];
+            REDIS_KEY_WORKER_MAP = new HashMap<>();
+            for (int i = 0; i < workers.size(); i++) {
+                AnemonesWorker worker = workers.get(i);
+                String queue = worker.queue();
+                String listKey = getAnemonesKeyCache(queue).getListKey();
+                WATCH_KEYS[i] = listKey;
+                REDIS_KEY_WORKER_MAP.put(listKey, worker);
+            }
+            this.connection = redisClient.connect();
         }
 
         @Override
         public void run() {
-            boolean needToRest = false;
-            RedisCommands<String, String> commands = redis.sync();
-            while (!stop) {
-                if (needToRest) {
+            try {
+                RedisCommands<String, String> commands = connection.sync();
+                while (!stop) {
                     try {
-                        TimeUnit.SECONDS.sleep(1);
-                    } catch (InterruptedException e) {
-                    }
-                    needToRest = false;
-
-                }
-                int availableProcessor = executor.getCorePoolSize() - executor.getActiveCount();
-                if (availableProcessor <= 0) {
-                    try {
-                        TimeUnit.MILLISECONDS.sleep(100);
-                    } catch (InterruptedException e) {
-                    }
-                    continue;
-                }
-                Iterator<AnemonesWorker> it = workers.iterator();
-                int tmpAvailableNum = availableProcessor;
-                while (it.hasNext() && !stop && availableProcessor > 0) {
-                    AnemonesWorker worker = it.next();
-                    AnemonesKeyCache cache = getAnemonesKeyCache(worker.queue());
-                    while (!stop && availableProcessor > 0) {
-                        String param = commands.rpop(cache.getListKey());
-                        if (param != null) {
-                            AnemonesData sidekiqData;
-                            try {
-                                sidekiqData = converter.deserialize(param);
-                            } catch (RuntimeException e) {
-                                log.error("[Anemones]严重,序列化失败,param:{}", param, e);
-                                continue;
-                            }
-                            executor.execute(new WorkerRunnable(DefaultAnemonesManager.this, worker, sidekiqData));
-                            availableProcessor--;
-                        } else {
-                            break;
+                        doInnerLoop(commands);
+                    } catch (RedisCommandInterruptedException e) {
+                        //
+                    } catch (RuntimeException e) {
+                        log.error("[Anemones] Anemones-Poller 异常", e);
+                        try {
+                            TimeUnit.SECONDS.sleep(1 + random.nextInt(POLL_WAIT_RANDOM_TIME));
+                        } catch (InterruptedException ignored) {
+                            //
                         }
                     }
                 }
-                // 如果没有任何任务执行
-                if (tmpAvailableNum == availableProcessor) {
-                    needToRest = true;
+                log.info("[Anemones] Anemones-Poller 安全关闭...");
+            } finally {
+                try {
+                    connection.close();
+                } catch (RuntimeException e) {
+                    //
                 }
             }
-            log.info("[Anemones] Anemones-Poller 安全关闭...");
+
+        }
+
+        private void doInnerLoop(RedisCommands<String, String> commands) {
+            int availableProcessor = executor.getCorePoolSize() - executor.getActiveCount();
+            if (availableProcessor <= 0) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(100);
+                } catch (InterruptedException e) {
+                    //
+                }
+                return;
+            }
+
+            while (!stop && availableProcessor > 0) {
+                KeyValue<String, String> keyValue = commands.brpop(POLL_BLOCK_SECONDS, WATCH_KEYS);
+                if (keyValue != null) {
+                    String param = keyValue.getValue();
+                    AnemonesData data;
+                    try {
+                        data = converter.deserialize(param);
+                    } catch (RuntimeException e) {
+                        log.error("[Anemones]严重,序列化失败,param:{}", param, e);
+                        continue;
+                    }
+
+                    executor.execute(new WorkerRunnable(DefaultAnemonesManager.this,
+                            REDIS_KEY_WORKER_MAP.get(keyValue.getKey()),
+                            data));
+                    availableProcessor--;
+                } else {
+                    break;
+                }
+            }
         }
 
         public void shutdown() {
             this.stop = true;
+            this.interrupt();
+        }
+
+        public void waitForShutdown() {
+            while (this.connection.isOpen()) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(100);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
         }
     }
 

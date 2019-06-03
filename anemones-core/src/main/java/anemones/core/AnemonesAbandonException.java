@@ -5,9 +5,9 @@ package anemones.core;
  *
  * @author hason
  */
-public class AnemonesUnsuccessfulException extends RuntimeException {
+public class AnemonesAbandonException extends RuntimeException {
 
-    public AnemonesUnsuccessfulException(String msg) {
+    public AnemonesAbandonException(String msg) {
         super(msg);
     }
 

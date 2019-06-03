@@ -3,7 +3,7 @@ package anemones.core;
 import anemones.core.event.AnemonesEvent;
 
 /**
- * Anemones事件监听器
+ * Anemones事件记录者
  *
  * @author hason
  */
@@ -18,4 +18,13 @@ public interface AnemonesEventListener {
      */
     void notifyEvent(AnemonesManager manager, AnemonesEvent event);
 
+
+    /**
+     * 监听器的权重,权重越高处理越优先
+     *
+     * @return 权重值
+     */
+    default int weight() {
+        return 1;
+    }
 }

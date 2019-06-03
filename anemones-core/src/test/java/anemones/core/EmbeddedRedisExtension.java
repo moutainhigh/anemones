@@ -46,6 +46,4 @@ public class EmbeddedRedisExtension implements BeforeAllCallback, AfterAllCallba
             //
         }
     }
-
-
 }

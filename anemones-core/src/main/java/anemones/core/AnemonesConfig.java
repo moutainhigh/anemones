@@ -7,7 +7,7 @@ import java.util.Collection;
 
 public class AnemonesConfig {
 
-    private static final String COMMON_PREFIX = "sidekiq";
+    private static final String COMMON_PREFIX = "anemones";
     private String namespace;
     private AnemonesParamConverter converter;
     private RedisURI redisUrl;

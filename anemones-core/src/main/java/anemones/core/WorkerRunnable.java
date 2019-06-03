@@ -35,13 +35,16 @@ class WorkerRunnable implements Runnable {
     public void run() {
         manager.fireEvent(new AnemonesStartEvent(param));
         Throwable throwable = null;
+        Object result = null;
         try {
-            this.worker.perform(param.getParam());
+            result = this.worker.perform(param.getParam());
         } catch (Throwable e) {
             throwable = e;
-            log.error("[Anemones]任务执行失败,param:{}", param, throwable);
+            if (!(e instanceof AnemonesAbandonException)) {
+                log.error("[Anemones]任务执行失败,param:{}", param, throwable);
+            }
         }
-        manager.fireEvent(new AnemonesCompleteEvent(param, worker, throwable));
+        manager.fireEvent(new AnemonesCompleteEvent(param, worker, result, throwable));
     }
 
 }

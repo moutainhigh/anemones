@@ -12,15 +12,16 @@ import java.util.concurrent.TimeUnit;
  *
  * @author hason
  */
-public interface AnemonesManager {
+public interface AnemonesManager extends AutoCloseable {
 
     /**
      * 批量提交任务
      *
      * @param queue 队列名
      * @param param 多个任务 的 参数
+     * @return job id 列表
      */
-    void submitTask(String queue, List<String> param);
+    List<String> submitTask(String queue, List<String> param);
 
     /**
      * 批量提交任务
@@ -28,8 +29,9 @@ public interface AnemonesManager {
      * @param queue   队列名
      * @param param   多个任务 的 参数
      * @param options 其他选项,一般用于中间件使用
+     * @return job id 列表
      */
-    void submitTask(String queue, List<String> param, Map<String, String> options);
+    List<String> submitTask(String queue, List<String> param, Map<String, String> options);
 
     /**
      * 批量提交任务在指定时间执行
@@ -38,23 +40,26 @@ public interface AnemonesManager {
      * @param param 参数列表
      * @param time  时间数额
      * @param unit  时间单位
+     * @return job id 列表
      */
-    void submitIn(String queue, List<String> param, int time, TimeUnit unit);
+    List<String> submitIn(String queue, List<String> param, int time, TimeUnit unit);
 
     /**
-     * 批量提交任务在指定事件执行
+     * 批量提交任务在指定时间执行
      *
      * @param queue    任务
      * @param param    参数列表
      * @param timeUnit 时间数额
      * @param unit     时间单位
      * @param options  其他选项,一般用于中间件使用
+     * @return job id 列表
      */
-    void submitIn(String queue, List<String> param, int timeUnit, TimeUnit unit, Map<String, String> options);
+    List<String> submitIn(String queue, List<String> param, int timeUnit, TimeUnit unit, Map<String, String> options);
 
 
     /**
      * 设置监听器
+     * 此方法并非线程安全,请不要在多线程情况下调用
      *
      * @param listeners 监听器集合
      */
@@ -68,17 +73,21 @@ public interface AnemonesManager {
     void retryTask(AnemonesData param);
 
     /**
-     * 触发任务
+     * 触发事件
      *
      * @param event 任务实例
      */
     void fireEvent(AnemonesEvent event);
 
+    /**
+     * 初始化AnemonesManager
+     */
+    void init();
 
     /**
-     * 是否已被关闭 拒绝执行任务
+     * 是否已关闭
      *
-     * @return 已被则返回true
+     * @return 关闭则返回true
      */
     boolean isShutdown();
 }

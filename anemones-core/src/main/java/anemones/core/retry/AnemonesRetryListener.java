@@ -1,4 +1,4 @@
-package anemones.core.middleware.retry;
+package anemones.core.retry;
 
 import anemones.core.*;
 import anemones.core.event.AnemonesCompleteEvent;
@@ -29,16 +29,17 @@ public class AnemonesRetryListener implements AnemonesEventListener {
         }
         AnemonesWorker worker = e.getWorker();
         AnemonesData param = e.getParam();
-        if (!(throwable instanceof AnemonesUnsuccessfulException)) {
+        if (!(throwable instanceof AnemonesAbandonException)) {
             int maxRetry = worker.retry() > 5 ? 5 : worker.retry();
             if (param.getRetry() < maxRetry) {
+                event.preventPopup();
                 if (manager.isShutdown()) {
                     log.warn("[Anemones-Retry]任务执行异常失败,但manager已关闭,等待任务救援,param:{}", param);
                     return;
                 }
                 param.setRetry(param.getRetry() + 1);
                 param.setMsg(throwable.getClass().getName() + " : " + throwable.getMessage());
-                param.setTargetTimestamp(System.currentTimeMillis() + retryForDelay(param.getRetry()) * 1000);
+                param.setTargetTimestamp(System.currentTimeMillis() + retryForDelay(param.getRetry()));
                 manager.retryTask(param);
                 log.warn("[Anemones-Retry]任务执行异常失败,即将重试,param:{}", param);
             } else if (worker.retry() != 0) {
@@ -52,8 +53,14 @@ public class AnemonesRetryListener implements AnemonesEventListener {
         }
     }
 
+    @Override
+    public int weight() {
+        return Integer.MAX_VALUE;
+    }
+
     private long retryForDelay(int count) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        return count * count * count * count + 15 + (random.nextInt(30) * count);
+        int num = count * count * count * count + 15 + (random.nextInt(30) * count);
+        return num * 1000;
     }
 }

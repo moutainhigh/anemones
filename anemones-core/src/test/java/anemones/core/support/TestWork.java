@@ -12,7 +12,7 @@ public abstract class TestWork implements AnemonesWorker {
 
     @Override
     @SneakyThrows
-    public void perform(String param) {
+    public Object perform(String param) {
         String[] parts = param.split("_");
         String name = parts[0];
         DefaultAnemonesManagerTest.STARTED_JOB.put(name, System.currentTimeMillis());
@@ -22,6 +22,7 @@ public abstract class TestWork implements AnemonesWorker {
         if (waitSeconds != 0) {
             TimeUnit.SECONDS.sleep(waitSeconds);
         }
+        return null;
     }
 
 }

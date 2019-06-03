@@ -3,6 +3,7 @@ package anemones.core;
 import anemones.core.retry.AnemonesRetryListener;
 import anemones.core.support.RetryTask;
 import anemones.core.util.TestHelper;
+import com.alibaba.fastjson.JSON;
 import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -24,14 +25,50 @@ public class MiddlewareTest {
         AnemonesConfig config = new AnemonesConfig();
         config.setNamespace("test");
         config.setConcurrency(2);
-        config.setWorkers(Collections.singletonList(new RetryTask()));
+        config.setWorkers(Collections.singletonList(new AnemonesWorker() {
+            @Override
+            public String queue() {
+                return "test_queue";
+            }
+
+            @Override
+            public Object perform(String param) {
+
+                int result = Integer.parseInt(param) * 2;
+                System.out.printf("%s * 2 = %d \n", param, result);
+                return result;
+            }
+        }));
         config.setRedisUrl(EmbeddedRedisExtension.REDIS_URI);
-        config.setConverter(TestHelper.CONVERTER);
+        config.setConverter(new AnemonesParamConverter() {
+            @Override
+            public String serialize(AnemonesData object) {
+                // you can use "fastjson" or other serializer and deserializer
+                return JSON.toJSONString(object);
+            }
+
+            @Override
+            public AnemonesData deserialize(String param) {
+                return JSON.parseObject(param, AnemonesData.class);
+            }
+        });
         AnemonesRetryListener listener = new AnemonesRetryListener((data, throwable) -> errConsumer = true);
         config.setListeners(Collections.singletonList(listener));
         config.setWaitSecondsToTerminate(1);
         manager = new DefaultAnemonesManager(config);
         manager.init();
+
+        // will print "10 * 2 = 20"
+        manager.submitTask("test_queue", Collections.singletonList("10"));
+
+        // will print "20 * 2 = 40" at least 10 seconds later
+        manager.submitIn("test_queue", Collections.singletonList("20"), 10, TimeUnit.SECONDS);
+
+        try {
+            manager.close();
+        } catch (Exception e) {
+            //
+        }
     }
 
     @AfterAll

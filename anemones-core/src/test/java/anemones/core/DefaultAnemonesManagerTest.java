@@ -6,6 +6,7 @@ import anemones.core.event.AnemonesStartEvent;
 import anemones.core.support.ImportantWork;
 import anemones.core.support.SimpleWork;
 import anemones.core.util.TestHelper;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -31,7 +32,7 @@ public class DefaultAnemonesManagerTest {
         config.setNamespace("test");
         config.setConcurrency(2);
         config.setWorkers(Arrays.asList(importantWork, simpleWork));
-        config.setRedisUrl(EmbeddedRedisExtension.REDIS_URI);
+        config.setRedisUrl(RedisURI.create("127.0.0.1", 6379));
         config.setConverter(TestHelper.CONVERTER);
         config.setListeners(Collections.singletonList((manager, event) -> {
             if (event instanceof AnemonesStartEvent) {

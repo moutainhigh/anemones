@@ -218,10 +218,13 @@ public class DefaultAnemonesManager implements AnemonesManager {
 
     @Override
     public void close() throws Exception {
-        log.info("[Anemones] 开始关闭Anemones");
+        log.info("[Anemones] Start shutdown");
         shutdown = true;
         try {
             if (workers == null || workers.isEmpty()) {
+                return;
+            }
+            if (poller == null) {
                 return;
             }
             this.poller.shutdown();
@@ -240,13 +243,13 @@ public class DefaultAnemonesManager implements AnemonesManager {
                 for (Map.Entry<String, List<AnemonesData>> entry : map.entrySet()) {
                     try {
                         submitDirectly(entry.getKey(), entry.getValue(), true);
-                        log.warn("[Anemones]关闭Anemones, 重新推入 {} 的参数为:{}", entry.getKey(), entry.getValue());
+                        log.warn("[Anemones] After shutdown, the tasks {} were pushed back to {}", entry.getValue(), entry.getKey());
                     } catch (RuntimeException e) {
-                        log.error("[Anemones]关闭Anemones, 重新推入 {} 异常,任务丢失", entry.getKey(), e);
+                        log.error("[Anemones] After shutdown, the tasks {} were pushed back to {} error, they will lost.", entry.getKey(), e);
                     }
                 }
             }
-            log.info("[Anemones] Anemones关闭完成");
+            log.info("[Anemones] shutdown finished");
         } finally {
             closeRedis();
         }
@@ -258,13 +261,13 @@ public class DefaultAnemonesManager implements AnemonesManager {
             try {
                 redis.close();
             } catch (RuntimeException e) {
-                log.error("[Anemones]Redis关闭失败", e);
+                log.error("[Anemones] redis connection close error", e);
             }
         }
         try {
             redisClient.shutdown();
         } catch (RuntimeException e) {
-            log.error("[Anemones]Redis Client关闭失败", e);
+            log.error("[Anemones] redis client close error", e);
         }
     }
 
@@ -300,10 +303,10 @@ public class DefaultAnemonesManager implements AnemonesManager {
                     } catch (RedisCommandInterruptedException e) {
                         //
                     } catch (RuntimeException e) {
-                        log.error("[Anemones] Anemones-Schedule-Poller 异常", e);
+                        log.error("[Anemones] Anemones-Schedule-Poller error", e);
                     }
                 }
-                log.info("[Anemones] Anemones-Schedule-Poller 安全关闭...");
+                log.info("[Anemones] Anemones-Schedule-Poller shutdown");
 
             } finally {
                 try {
@@ -398,7 +401,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
                     } catch (RedisCommandInterruptedException e) {
                         //
                     } catch (RuntimeException e) {
-                        log.error("[Anemones] Anemones-Poller 异常", e);
+                        log.error("[Anemones] Anemones-Poller error", e);
                         try {
                             TimeUnit.SECONDS.sleep(1 + random.nextInt(POLL_WAIT_RANDOM_TIME));
                         } catch (InterruptedException ignored) {
@@ -406,7 +409,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
                         }
                     }
                 }
-                log.info("[Anemones] Anemones-Poller 安全关闭...");
+                log.info("[Anemones] Anemones-Poller shutdown...");
             } finally {
                 try {
                     connection.close();
@@ -436,7 +439,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
                     try {
                         data = converter.deserialize(param);
                     } catch (RuntimeException e) {
-                        log.error("[Anemones]严重,序列化失败,param:{}", param, e);
+                        log.error("[Anemones] deserialize error ,param:{}", param, e);
                         continue;
                     }
 

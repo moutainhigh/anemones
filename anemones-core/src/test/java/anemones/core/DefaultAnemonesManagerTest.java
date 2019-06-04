@@ -6,7 +6,6 @@ import anemones.core.event.AnemonesStartEvent;
 import anemones.core.support.ImportantWork;
 import anemones.core.support.SimpleWork;
 import anemones.core.util.TestHelper;
-import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -16,6 +15,8 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+
+import static anemones.core.EmbeddedRedisExtension.REDIS_CONN;
 
 @Slf4j
 @DisplayName("DefaultAnemonesManagerTest")
@@ -32,7 +33,7 @@ public class DefaultAnemonesManagerTest {
         config.setNamespace("test");
         config.setConcurrency(2);
         config.setWorkers(Arrays.asList(importantWork, simpleWork));
-        config.setRedisUrl(RedisURI.create("127.0.0.1", 6379));
+        config.setRedisUrl(EmbeddedRedisExtension.REDIS_URI);
         config.setConverter(TestHelper.CONVERTER);
         config.setListeners(Collections.singletonList((manager, event) -> {
             if (event instanceof AnemonesStartEvent) {
@@ -101,7 +102,8 @@ public class DefaultAnemonesManagerTest {
         }
         Assertions.assertTrue(STARTED_JOB.get("job3") <= STARTED_JOB.get("job4"), "定时任务到点需要优先执行");
         Assertions.assertTrue(STARTED_JOB.get("job6") > STARTED_JOB.get("job3"), "权重高的任务必须优先执行");
-        RedisCommands<String, String> commands = EmbeddedRedisExtension.REDIS_CONN.sync();
+        RedisCommands<String, String> commands = REDIS_CONN.sync();
+        log.info("当前剩余的key{}", commands.keys("*"));
         String param = commands.rpop(manager.getAnemonesKeyCache("simple").getListKey());
         Assertions.assertNotNull(param, "救援需要重新把数据放回redis");
         AnemonesData data = TestHelper.CONVERTER.deserialize(param);

@@ -8,6 +8,33 @@
     <artifactId>anemones</artifactId>
     <packaging>pom</packaging>
     <version>0.0.1-SNAPSHOT</version>
+    <description>A Redis-backed Java library for creating background jobs, placing them on multiple queues, and
+        processing them later.
+    </description>
+    <url>https://github.com/csdbianhua/anemones</url>
+    <name>${project.artifactId}</name>
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+    <scm>
+        <url>https://github.com/csdbianhua/anemones</url>
+        <connection>scm:git:https://github.com/csdbianhua/anemones.git</connection>
+        <developerConnection>scm:git:https://github.com/csdbianhua/anemones.git</developerConnection>
+    </scm>
+    <developers>
+        <developer>
+            <name>Hason Chan</name>
+            <email>imyijie@outlook.com</email>
+            <url>https://www.cnblogs.com/imyijie</url>
+        </developer>
+    </developers>
+    <issueManagement>
+        <url>https://github.com/csdbianhua/anemones/issues</url>
+        <system>github</system>
+    </issueManagement>
     <modules>
         <module>anemones-core</module>
     </modules>
@@ -15,10 +42,21 @@
         <java.version>1.8</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
-    </properties>
-    <dependencies>
 
-    </dependencies>
+        <build.plugins.plugin.version>3.1.0</build.plugins.plugin.version>
+        <maven.jacoco.version>0.8.3</maven.jacoco.version>
+        <maven.javadoc.version>3.0.1</maven.javadoc.version>
+    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>anemones</groupId>
+                <artifactId>anemones-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
             <plugin>
@@ -28,7 +66,46 @@
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
+                    <encoding>UTF-8</encoding>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${maven.javadoc.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <locale>en_US</locale>
+                            <encoding>UTF-8</encoding>
+                            <charset>UTF-8</charset>
+                            <doclint>none</doclint>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.3</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -41,17 +118,6 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>cobertura-maven-plugin</artifactId>
-                <version>2.7</version>
-                <configuration>
-                    <formats>
-                        <format>html</format>
-                    </formats>
-                    <check/>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

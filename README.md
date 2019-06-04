@@ -1,5 +1,6 @@
-Anemones
+Anemones 
 ==
+[![Travis Build Status](https://travis-ci.org/csdbianhua/anemones.svg?branch=master)](https://travis-ci.org/csdbianhua/anemones)
 
 Anemones is a Redis-backed library for Simple background processing.
 

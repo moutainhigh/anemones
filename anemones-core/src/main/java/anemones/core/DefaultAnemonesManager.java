@@ -34,6 +34,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
      * 任务阻塞拉取的超时时间
      */
     private static final int POLL_BLOCK_SECONDS = 3;
+    private final RedisURI redisUrl;
     private volatile boolean shutdown = false;
     private final String finalPrefix;
     private final String allPrefix;
@@ -44,12 +45,12 @@ public class DefaultAnemonesManager implements AnemonesManager {
     private final List<AnemonesWorker> workers;
     private final int concurrency;
     private final int waitSecondsToTerminate;
-    private final RedisClient redisClient;
     private final String pollerLockKey;
 
     private AnemonesThreadPoolExecutor executor;
     private Poller poller;
     private SchedulePoller schedulePoller;
+    private RedisClient redisClient;
     private StatefulRedisConnection<String, String> redis;
 
     public DefaultAnemonesManager(AnemonesConfig config) {
@@ -69,7 +70,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
         }
         this.waitSecondsToTerminate = config.getWaitSecondsToTerminate();
         this.pollerLockKey = config.getPollerLockKey();
-        this.redisClient = RedisClient.create(config.getRedisUrl());
+        this.redisUrl = config.getRedisUrl();
     }
 
     int getWaitSecondsToTerminate() {
@@ -200,6 +201,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
         if (this.converter == null) {
             throw new IllegalArgumentException("converter cannot be none");
         }
+        this.redisClient = RedisClient.create(redisUrl);
         this.redis = redisClient.connect();
         if (workers == null || workers.isEmpty()) {
             log.info("[Anemones]{} there is no workers.", namespace);

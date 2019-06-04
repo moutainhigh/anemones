@@ -2,6 +2,7 @@ Anemones
 ==
 [![Travis Build Status](https://travis-ci.org/csdbianhua/anemones.svg?branch=master)](https://travis-ci.org/csdbianhua/anemones)
 [![Licence](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/csdbianhua/anemones/blob/master/LICENSE)
+[![codecov](https://codecov.io/gh/csdbianhua/anemones/branch/master/graph/badge.svg)](https://codecov.io/gh/csdbianhua/anemones)
 
 Anemones is a Redis-backed library for Simple background processing.
 

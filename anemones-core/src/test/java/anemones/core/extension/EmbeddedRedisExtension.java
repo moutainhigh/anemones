@@ -1,4 +1,4 @@
-package anemones.core;
+package anemones.core.extension;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;

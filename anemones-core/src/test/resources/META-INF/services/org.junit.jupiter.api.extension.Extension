@@ -1,1 +1,1 @@
-anemones.core.EmbeddedRedisExtension
+anemones.core.extension.EmbeddedRedisExtension

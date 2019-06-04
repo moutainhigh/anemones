@@ -54,7 +54,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
 
     public DefaultAnemonesManager(AnemonesConfig config) {
         if (config.getRedisUrl() == null) {
-            throw new IllegalArgumentException("redisUrl不可为空");
+            throw new IllegalArgumentException("redisUrl is null");
         }
         this.finalPrefix = config.getFinalPrefix();
         this.allPrefix = config.getAllPrefix();
@@ -72,6 +72,9 @@ public class DefaultAnemonesManager implements AnemonesManager {
         this.redisClient = RedisClient.create(config.getRedisUrl());
     }
 
+    int getWaitSecondsToTerminate() {
+        return waitSecondsToTerminate;
+    }
 
     @Override
     public List<String> submitTask(String queue, List<String> param) {
@@ -195,15 +198,15 @@ public class DefaultAnemonesManager implements AnemonesManager {
     @Override
     public void init() {
         if (this.converter == null) {
-            throw new IllegalArgumentException("Converter不可为空");
+            throw new IllegalArgumentException("converter cannot be none");
         }
         this.redis = redisClient.connect();
         if (workers == null || workers.isEmpty()) {
-            log.info("[Anemones]{}工作者数量为0,将不启动工作线程", namespace);
+            log.info("[Anemones]{} there is no workers.", namespace);
             return;
         }
         if (this.concurrency <= 0) {
-            throw new IllegalArgumentException("并发数不可小于等于0");
+            throw new IllegalArgumentException("concurrency must greater than 0");
         }
         this.executor = new AnemonesThreadPoolExecutor(this.concurrency);
         this.poller = new Poller();

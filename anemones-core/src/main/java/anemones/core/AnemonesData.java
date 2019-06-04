@@ -1,6 +1,7 @@
 package anemones.core;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.Map;
 
@@ -10,6 +11,7 @@ import java.util.Map;
  * @author hason
  */
 @Data
+@EqualsAndHashCode(of = "jobId")
 public class AnemonesData {
     /**
      * 队列

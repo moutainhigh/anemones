@@ -3,9 +3,10 @@ package anemones.core;
 import anemones.core.event.AnemonesCompleteEvent;
 import anemones.core.event.AnemonesInboundEvent;
 import anemones.core.event.AnemonesStartEvent;
+import anemones.core.extension.EmbeddedRedisExtension;
 import anemones.core.support.ImportantWork;
 import anemones.core.support.SimpleWork;
-import anemones.core.util.TestHelper;
+import anemones.core.util.TestConstants;
 import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -16,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import static anemones.core.EmbeddedRedisExtension.REDIS_CONN;
+import static anemones.core.extension.EmbeddedRedisExtension.REDIS_CONN;
 
 @Slf4j
 @DisplayName("DefaultAnemonesManagerTest")
@@ -34,7 +35,7 @@ public class DefaultAnemonesManagerTest {
         config.setConcurrency(2);
         config.setWorkers(Arrays.asList(importantWork, simpleWork));
         config.setRedisUrl(EmbeddedRedisExtension.REDIS_URI);
-        config.setConverter(TestHelper.CONVERTER);
+        config.setConverter(TestConstants.CONVERTER);
         config.setListeners(Collections.singletonList((manager, event) -> {
             if (event instanceof AnemonesStartEvent) {
                 log.info("任务开始: {}", event.getPayload());
@@ -67,7 +68,42 @@ public class DefaultAnemonesManagerTest {
     private static DefaultAnemonesManager manager;
 
     @Test
-    public void executorTest() throws InterruptedException {
+    void testConfig() {
+        AnemonesConfig config = new AnemonesConfig();
+        IllegalArgumentException e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            new DefaultAnemonesManager(config);
+        });
+        Assertions.assertTrue(e.getMessage().contains("redisUrl"));
+        config.setNamespace("test");
+        config.setConcurrency(0);
+        config.setRedisUrl(EmbeddedRedisExtension.REDIS_URI);
+        config.setWaitSecondsToTerminate(-1);
+        DefaultAnemonesManager m = new DefaultAnemonesManager(config);
+        Assertions.assertEquals(0, m.getWaitSecondsToTerminate());
+        m = new DefaultAnemonesManager(config);
+
+        e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
+        Assertions.assertTrue(e.getMessage().contains("converter"));
+
+        config.setWorkers(Collections.singletonList(new SimpleWork()));
+        config.setConverter(TestConstants.CONVERTER);
+        m = new DefaultAnemonesManager(config);
+        e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
+        Assertions.assertTrue(e.getMessage().contains("concurrency"));
+
+        config.setWorkers(Collections.emptyList());
+        m = new DefaultAnemonesManager(config);
+        Assertions.assertDoesNotThrow(m::init, "When there is no workers, Anemones will not create thread pool.");
+    }
+
+    @Test
+    void fireEventTest() {
+        Assertions.assertDoesNotThrow(() -> manager.fireEvent(new AnemonesInboundEvent(null, null, null, false)),
+                "Listener's error will be caught");
+    }
+
+    @Test
+    void executorTest() throws InterruptedException {
         AnemonesThreadPoolExecutor e = new AnemonesThreadPoolExecutor(1);
         AnemonesData data = new AnemonesData();
         data.setParam("test_1");
@@ -106,8 +142,9 @@ public class DefaultAnemonesManagerTest {
         log.info("当前剩余的key{}", commands.keys("*"));
         String param = commands.rpop(manager.getAnemonesKeyCache("simple").getListKey());
         Assertions.assertNotNull(param, "救援需要重新把数据放回redis");
-        AnemonesData data = TestHelper.CONVERTER.deserialize(param);
+        AnemonesData data = TestConstants.CONVERTER.deserialize(param);
         Assertions.assertEquals(rescueJob, data.getParam(), "救援的任务需要是原任务");
+        commands.flushall();
     }
 
 

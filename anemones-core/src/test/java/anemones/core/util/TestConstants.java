@@ -4,7 +4,7 @@ import anemones.core.AnemonesData;
 import anemones.core.AnemonesParamConverter;
 import com.alibaba.fastjson.JSON;
 
-public class TestHelper {
+public class TestConstants {
 
     public static final AnemonesParamConverter CONVERTER = new AnemonesParamConverter() {
         @Override

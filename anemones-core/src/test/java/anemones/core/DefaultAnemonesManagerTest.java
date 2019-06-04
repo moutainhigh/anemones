@@ -68,7 +68,7 @@ public class DefaultAnemonesManagerTest {
     private static DefaultAnemonesManager manager;
 
     @Test
-    void testConfig() {
+    void testConfig() throws Exception {
         AnemonesConfig config = new AnemonesConfig();
         IllegalArgumentException e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
             new DefaultAnemonesManager(config);
@@ -81,19 +81,28 @@ public class DefaultAnemonesManagerTest {
         DefaultAnemonesManager m = new DefaultAnemonesManager(config);
         Assertions.assertEquals(0, m.getWaitSecondsToTerminate());
         m = new DefaultAnemonesManager(config);
-
-        e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
-        Assertions.assertTrue(e.getMessage().contains("converter"));
-
-        config.setWorkers(Collections.singletonList(new SimpleWork()));
-        config.setConverter(TestConstants.CONVERTER);
-        m = new DefaultAnemonesManager(config);
-        e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
-        Assertions.assertTrue(e.getMessage().contains("concurrency"));
-
-        config.setWorkers(Collections.emptyList());
-        m = new DefaultAnemonesManager(config);
-        Assertions.assertDoesNotThrow(m::init, "When there is no workers, Anemones will not create thread pool.");
+        try {
+            e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
+            Assertions.assertTrue(e.getMessage().contains("converter"));
+        } finally {
+            m.close();
+        }
+        try {
+            config.setWorkers(Collections.singletonList(new SimpleWork()));
+            config.setConverter(TestConstants.CONVERTER);
+            m = new DefaultAnemonesManager(config);
+            e = Assertions.assertThrows(IllegalArgumentException.class, m::init);
+            Assertions.assertTrue(e.getMessage().contains("concurrency"));
+        } finally {
+            m.close();
+        }
+        try {
+            config.setWorkers(Collections.emptyList());
+            m = new DefaultAnemonesManager(config);
+            Assertions.assertDoesNotThrow(m::init, "When there is no workers, Anemones will not create thread pool.");
+        } finally {
+            m.close();
+        }
     }
 
     @Test

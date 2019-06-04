@@ -12,9 +12,6 @@ matrix:
 install:
   - mvn install -DskipTests=true -Dmaven.javadoc.skip=true -B -V -DminimumPriority=1
 
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
-
 cache:
   directories:
   - $HOME/.m2/

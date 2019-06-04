@@ -91,7 +91,7 @@ public class DefaultAnemonesManager implements AnemonesManager {
     @Override
     public List<String> submitIn(String queue, List<String> param, int timeUnit, TimeUnit unit, Map<String, String> options) {
         long currentTimeMillis = System.currentTimeMillis();
-        List<String> jobIds = new ArrayList<>(param);
+        List<String> jobIds = new ArrayList<>(param.size());
         List<AnemonesData> list = new ArrayList<>(param.size());
         for (String o : param) {
             AnemonesData datum = new AnemonesData();

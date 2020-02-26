@@ -4,11 +4,11 @@ Anemones
 [![Licence](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/csdbianhua/anemones/blob/master/LICENSE)
 [![codecov](https://codecov.io/gh/csdbianhua/anemones/branch/master/graph/badge.svg)](https://codecov.io/gh/csdbianhua/anemones)
 
-Anemones是一个以redis为存储源的简单的后台任务处理库。
+Anemones is a Redis-backed library for Simple background processing.
 
-创造一些后台任务提交给Anemones，它会根据主题把这些任务放到不同的队列中，然后分发到不同的实例上处理。
+Create background jobs, place those jobs on multiple queues, and process them later.
 
-## 快速上手
+## Quick start
 
 `git clone git@github.com:csdbianhua/anemones.git`
 
@@ -89,25 +89,26 @@ class App {
 }
 ```
 
-① 设定不同的命名空间以避免不同的业务重名导致的干扰
+① Multiple `AnemonesManager` with same redis url and different namespaces will not affect each other.
 
-② 决定创建多少线程处理任务
+② Decide how much threads will create to process jobs.
 
-③ 创建一个任务处理过程
+③ The background jobs of `AnemonesManager`
 
-④ 连接Redis的`RedisURI`对象. 具体构建方式查看 [lettuce redis client](https://github.com/lettuce-io/lettuce-core/wiki/Redis-URI-and-connection-details).
+④ The `RedisURI` instance for connecting Redis. see [lettuce redis client](https://github.com/lettuce-io/lettuce-core/wiki/Redis-URI-and-connection-details).
 
-⑤ 自定义 `AnemonesData` 的序列化与反序列化器
+⑤ The custom converter for serializing and de-serializing `AnemonesData`
 
-⑥ Anemones 可以使用自定义监听器来实现功能扩展，比如重试插件或者数据库日志插件。
+⑥ Anemones use listeners to implement extend features, including the "retry" feature.
 
-⑦ 当`AnemonesManager`关闭时（close方法被调用），它会等待一段时间以等待正在处理的任务完成。然后会将还未完成的任务退回队列。
+⑦ When `AnemonesManager` shutdown (method `close()` be called), it will wait for a few seconds before finishing jobs in progress.
+Then the unfinished jobs will be pushed back to the queue again.
 
-⑧ 初始化`AnemonesManager`
+⑧ Initial the Redis connections and create thread pool and so on.
 
-⑨ 此任务将会立马执行
+⑨ The task will be processed soon.
 
-⑩ 此任务将会在大概十秒后执行
+⑩ The task will be processed at least 10 seconds later.
 
 ## License
 Anemones is released under the [MIT License](https://github.com/csdbianhua/anemones/blob/master/LICENSE).

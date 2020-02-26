@@ -30,7 +30,7 @@ public class AnemonesRetryListener implements AnemonesEventListener {
         AnemonesWorker worker = e.getWorker();
         AnemonesData param = e.getParam();
         if (!(throwable instanceof AnemonesAbandonException)) {
-            int maxRetry = worker.retry() > 5 ? 5 : worker.retry();
+            int maxRetry = Math.min(worker.retry(), 5);
             if (param.getRetry() < maxRetry) {
                 event.preventPopup();
                 if (manager.isShutdown()) {
@@ -58,6 +58,12 @@ public class AnemonesRetryListener implements AnemonesEventListener {
         return Integer.MAX_VALUE;
     }
 
+    /**
+     * 计算下一次重试的间隔时间，越多重试次数将导致更长的重试间隔。
+     *
+     * @param count 当前重试的次数
+     * @return 重试间隔时间（ms）
+     */
     private long retryForDelay(int count) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         int num = count * count * count * count + 15 + (random.nextInt(30) * count);

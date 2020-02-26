@@ -400,8 +400,8 @@ public class DefaultAnemonesManager implements AnemonesManager {
                 while (!stop) {
                     try {
                         doInnerLoop(commands);
-                    } catch (RedisCommandInterruptedException e) {
-                        //
+                    } catch (RedisCommandInterruptedException | InterruptedException e) {
+                        continue;
                     } catch (RuntimeException e) {
                         log.error("[Anemones] Anemones-Poller error", e);
                         try {
@@ -422,16 +422,8 @@ public class DefaultAnemonesManager implements AnemonesManager {
 
         }
 
-        private void doInnerLoop(RedisCommands<String, String> commands) {
-            int availableProcessor = executor.getCorePoolSize() - executor.getActiveCount();
-            if (availableProcessor <= 0) {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(100);
-                } catch (InterruptedException e) {
-                    //
-                }
-                return;
-            }
+        private void doInnerLoop(RedisCommands<String, String> commands) throws InterruptedException {
+            int availableProcessor = executor.waitForAvailableProcessor();
 
             while (!stop && availableProcessor > 0) {
                 KeyValue<String, String> keyValue = commands.brpop(POLL_BLOCK_SECONDS, WATCH_KEYS);

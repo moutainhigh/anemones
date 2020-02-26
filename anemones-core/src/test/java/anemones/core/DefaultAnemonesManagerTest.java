@@ -13,18 +13,21 @@ import org.junit.jupiter.api.*;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static anemones.core.extension.EmbeddedRedisExtension.REDIS_CONN;
 
+/**
+ * 基础集成测试
+ */
 @Slf4j
 @DisplayName("DefaultAnemonesManagerTest")
 public class DefaultAnemonesManagerTest {
 
 
-    public static final Map<String, Long> STARTED_JOB = new ConcurrentHashMap<>();
+    public static final Map<String, Long> STARTED_JOB = Collections.synchronizedMap(new LinkedHashMap<>());
 
     @BeforeAll
     static void beforeAll() {
@@ -129,24 +132,24 @@ public class DefaultAnemonesManagerTest {
     @DisplayName("integrated test")
     void integrated() throws Exception {
         manager.submitTask("important", Arrays.asList("job1_10", "job2_10"));
-        manager.submitTask("simple", Arrays.asList("job6_1", "job7_1"));
-        manager.submitTask("important", Arrays.asList("job4_1", "job5_1"));
-        manager.submitIn("important", Collections.singletonList("job3_1"),
+        manager.submitTask("simple", Arrays.asList("job7_1", "job8_1"));
+        manager.submitTask("important", Arrays.asList("job6_1", "job5_1"));
+        manager.submitIn("important", Arrays.asList("job3_1", "job4_1"),
                 2, TimeUnit.SECONDS);
         long now = System.currentTimeMillis();
         while (STARTED_JOB.size() < 7 && System.currentTimeMillis() - now < 20_000) {
             TimeUnit.SECONDS.sleep(1);
         }
-        String rescueJob = "job8_10";
+        String rescueJob = "jobrescue_10";
         manager.submitTask("simple", Collections.singletonList(rescueJob));
         TimeUnit.SECONDS.sleep(1);
         manager.close();
-        log.info("STARTED_JOB: {}", STARTED_JOB);
-        for (String job : Arrays.asList("job1", "job2", "job3", "job4", "job5", "job6", "job7")) {
+        log.info("STARTED_JOB: {}", STARTED_JOB.entrySet());
+        for (String job : Arrays.asList("job1", "job2", "job3", "job4", "job5", "job6", "job7", "job8")) {
             Assertions.assertTrue(STARTED_JOB.containsKey(job), "任务" + job + "执行完成");
         }
-        Assertions.assertTrue(STARTED_JOB.get("job3") <= STARTED_JOB.get("job4"), "定时任务到点需要优先执行");
-        Assertions.assertTrue(STARTED_JOB.get("job6") > STARTED_JOB.get("job3"), "权重高的任务必须优先执行");
+        Assertions.assertTrue(STARTED_JOB.get("job3") <= STARTED_JOB.get("job5"), "定时任务到点需要优先执行");
+        Assertions.assertTrue(STARTED_JOB.get("job7") > STARTED_JOB.get("job3"), "权重高的任务必须优先执行");
         RedisCommands<String, String> commands = REDIS_CONN.sync();
         log.info("当前剩余的key{}", commands.keys("*"));
         String param = commands.rpop(manager.getAnemonesKeyCache("simple").getListKey());

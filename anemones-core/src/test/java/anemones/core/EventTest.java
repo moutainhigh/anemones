@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * 事件类是否正常
+ */
 public class EventTest {
 
     @Test

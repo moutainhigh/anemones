@@ -7,11 +7,15 @@ import io.lettuce.core.api.sync.RedisCommands;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 中间件能否正常工作
+ */
 @Slf4j
 @DisplayName("MiddlewareTest")
 public class MiddlewareTest {
@@ -86,36 +90,39 @@ public class MiddlewareTest {
 
     @Test
     @DisplayName("retry middleware")
-    void retry() throws InterruptedException {
-        RedisCommands<String, String> commands = EmbeddedRedisExtension.REDIS_CONN.sync();
-        AnemonesKeyCache cache = manager.getAnemonesKeyCache(RETRY_QUEUE);
-        commands.del(cache.getZsetKey());
-        manager.submitTask(RETRY_QUEUE, Collections.singletonList(""));
-        TimeUnit.SECONDS.sleep(1);
-
-        List<String> param = commands.zrange(cache.getZsetKey(), 0, -1);
-        Assertions.assertEquals(param.size(), 1, "The task need to be pushed back queue after throwing exception");
-        AnemonesData datum = TestConstants.CONVERTER.deserialize(param.get(0));
-        Assertions.assertEquals(datum.getRetry(), 1, "The retry count need to increment after throwing exception");
-        long now = System.currentTimeMillis();
-        while (commands.zcard(cache.getZsetKey()) != 0 && System.currentTimeMillis() - now < 60_000) {
+    void retry() {
+        Assertions.assertTimeout(Duration.ofMinutes(2), () -> {
+            RedisCommands<String, String> commands = EmbeddedRedisExtension.REDIS_CONN.sync();
+            AnemonesKeyCache cache = manager.getAnemonesKeyCache(RETRY_QUEUE);
+            commands.del(cache.getZsetKey());
+            manager.submitTask(RETRY_QUEUE, Collections.singletonList(""));
             TimeUnit.SECONDS.sleep(1);
-        }
-        Assertions.assertTrue(System.currentTimeMillis() - now > 16_000, "Retry interval takes at least sixteen seconds(no reason)");
-        log.info("left keys : {}", commands.keys("*"));
-        TimeUnit.SECONDS.sleep(3);
-        Assertions.assertTrue(errConsumer, "When retry count reach the max retry limit, error consumer must be notified");
 
-        errConsumer = false;
-        manager.submitTask(ABANDON_QUEUE, Collections.singletonList(""));
-        TimeUnit.SECONDS.sleep(1);
-        Assertions.assertEquals(0, commands.zcard(cache.getZsetKey()), "It will not have any further action when throwing " + AnemonesAbandonException.class.getName());
-        Assertions.assertFalse(errConsumer, "Error consumer will not be notified when throwing " + AnemonesAbandonException.class.getName());
+            List<String> param = commands.zrange(cache.getZsetKey(), 0, -1);
+            Assertions.assertEquals(param.size(), 1, "The task need to be pushed back queue after throwing exception");
+            AnemonesData datum = TestConstants.CONVERTER.deserialize(param.get(0));
+            Assertions.assertEquals(datum.getRetry(), 1, "The retry count need to increment after throwing exception");
+            long now = System.currentTimeMillis();
+            while (commands.zcard(cache.getZsetKey()) != 0 && System.currentTimeMillis() - now < 60_000) {
+                TimeUnit.SECONDS.sleep(1);
+            }
+            Assertions.assertTrue(System.currentTimeMillis() - now > 16_000, "Retry interval takes at least sixteen seconds(no reason)");
+            log.info("left keys : {}", commands.keys("*"));
+            TimeUnit.SECONDS.sleep(3);
+            Assertions.assertTrue(errConsumer, "When retry count reach the max retry limit, error consumer must be notified");
 
-        manager.submitTask(NO_RETRY_QUEUE, Collections.singletonList(""));
-        TimeUnit.SECONDS.sleep(1);
-        Assertions.assertEquals(0, commands.zcard(cache.getZsetKey()), "It will not have any further action when there isn't retry config");
-        Assertions.assertFalse(errConsumer, "Error consumer will not be notified when there isn't retry config");
+            errConsumer = false;
+            manager.submitTask(ABANDON_QUEUE, Collections.singletonList(""));
+            TimeUnit.SECONDS.sleep(1);
+            Assertions.assertEquals(0, commands.zcard(cache.getZsetKey()), "It will not have any further action when throwing " + AnemonesAbandonException.class.getName());
+            Assertions.assertFalse(errConsumer, "Error consumer will not be notified when throwing " + AnemonesAbandonException.class.getName());
+
+            manager.submitTask(NO_RETRY_QUEUE, Collections.singletonList(""));
+            TimeUnit.SECONDS.sleep(1);
+            Assertions.assertEquals(0, commands.zcard(cache.getZsetKey()), "It will not have any further action when there isn't retry config");
+            Assertions.assertFalse(errConsumer, "Error consumer will not be notified when there isn't retry config");
+        }, "wait retry too long");
+
     }
 
 
